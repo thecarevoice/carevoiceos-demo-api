@@ -1,0 +1,49 @@
+### Usage Instructions:
+# 1. Install REST Client plugin in VS Code
+# 2. Configure system variables at the top of the file or in VS Code settings:
+#    - @api_key: Your API key
+#    - @client_id: Your client ID
+#    - @client_secret: Your client secret
+#    - @group: Your group ID
+# 3. Execute step 1 to get server token, copy the returned access_token
+# 4. Update runtime variables:
+#    @server_token = access_token returned from step 1
+#    @account_id = uid returned from step 2
+# 5. Execute requests in order
+
+
+# System Variables - Configure these in your environment or VS Code settings
+@api_key = replace_me
+@client_id = replace_me
+@client_secret = replace_me
+@group = replace_me
+
+# Runtime Variables - These will be updated during API calls
+@server_token = eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NTQ1NDc3MDcsImV4cCI6MTc1NDYzNDEwNywiaXNzIjoiVGhlQ2FyZVZvaWNlIiwic3ViIjoiUC1VU0NCIn0.kmpSrpFc9PPWPbV-mG1Wds6wEbzyedmdlQoWvSht0cg8JJoowpFCMc2koWapzv3hvBy_i4FTnBR_7w8IX9W2F45arN89wJchsI6-trBRRGOwmdytV8RWAnHItke5QK200t9R4feg962SwlnUSImIOUsDzfvmEt017OJrtKHvAP9vuSwoO1H_I2iUdKRVj8jSJ_12JU5z1Tcm1Ls4ONB60HxBHSjh4win0v9UgI3JesQu8SqKTXNttLlvxOMorAOLy6e7WA4A7QqhOospVZk7XMB-hpb5-Rofurt6LBnupmywRyF8dNiIOGXNbK3JGGuQOM2R5bLeZUHYF5NtJGyrrw
+@account_id = T-20250807062430-P3q3WmC3jd24SzUdnlw0
+
+### 1. Get Server Token
+POST https://gravitee-gateway.kangyu.info/os3/api/open/v1/auth/token
+X-Api-Key: {{api_key}}
+Content-Type: application/json
+
+{
+  "client_id": "{{client_id}}",
+  "client_secret": "{{client_secret}}"
+}
+
+### 2. Create User
+POST https://gravitee-gateway.kangyu.info/os3/api/open/v1/account
+X-Api-Key: {{api_key}}
+Authorization: Bearer {{server_token}}
+Content-Type: application/json
+
+{
+  "group": "{{group}}"
+}
+
+### 3. Get User Token
+GET https://gravitee-gateway.kangyu.info/os3/api/open/v1/account/{{account_id}}/token
+X-Api-Key: {{api_key}}
+Authorization: Bearer {{server_token}}
+

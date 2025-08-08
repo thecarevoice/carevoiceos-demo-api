@@ -1,0 +1,39 @@
+# CareVoiceOS Demo API Test Script
+# Base URL: http://localhost:3005
+
+### 1. Health Check
+GET http://localhost:3005/api/health
+
+### 2. CareVoiceOS Health Check
+GET http://localhost:3005/api/health/carevoice
+
+### 3. Register User
+POST http://os3demo.com:3005/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123",
+  "name": "Test User"
+}
+
+### 4. Login User
+POST http://localhost:3005/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+### 5. CareVoiceOS Authentication
+POST http://localhost:3005/api/auth/carevoice
+Content-Type: application/json
+
+{
+  "uniqueId": "test-user-123"
+}
+
+### 6. Get User Profile (requires token from login)
+GET http://localhost:3005/api/auth/profile
+Authorization: Bearer YOUR_JWT_TOKEN_HERE 
