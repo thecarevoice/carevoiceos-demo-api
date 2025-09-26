@@ -12,9 +12,8 @@ POST http://os3demo.com:3005/api/auth/register
 Content-Type: application/json
 
 {
-  "email": "test@example.com",
-  "password": "password123",
-  "name": "Test User"
+  "email": "test2@example.com",
+  "password": "password1234"
 }
 
 ### 4. Login User
