@@ -45,8 +45,8 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/health', healthRoutes);
+app.use('/api/app/auth', authRoutes);
+app.use('/api/app/health', healthRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -79,10 +79,12 @@ app.use((error, req, res, next) => {
 
 // Start server
 const PORT = config.server.port;
-app.listen(PORT, () => {
-  console.log(`🚀 CareVoiceOS Demo API server running on port ${PORT}`);
+const HOST = config.server.host || '0.0.0.0'; // 绑定到所有接口
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 CareVoiceOS Demo API server running on ${HOST}:${PORT}`);
   console.log(`📊 Environment: ${config.server.nodeEnv}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
+  console.log(`🔗 Android emulator: http://10.0.2.2:${PORT}/api/health`);
   console.log(`📚 API Documentation: http://localhost:${PORT}/api/health/carevoice`);
 });
 

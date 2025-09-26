@@ -25,7 +25,14 @@ const config = {
   },
   
   cors: {
-    origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000', 'http://localhost:8081'],
+    origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : [
+      'http://localhost:3000', 
+      'http://localhost:8081',
+      'http://10.0.2.2:3000',
+      'http://10.0.2.2:3005',
+      'http://osdemo.com',
+      'http://osdemo.com:3005'
+    ],
   },
 };
 
