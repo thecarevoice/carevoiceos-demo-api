@@ -1,0 +1,40 @@
+### 测试后端API - deeplink-sso-appa (SSO Flow)
+
+### 1. 注册新用户
+POST http://localhost:3005/api/app/auth/register
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "123456"
+}
+
+### 2. 登录用户 (只验证用户名密码,不调用CareVoiceOS)
+POST http://localhost:3005/api/app/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "123456"
+}
+
+### 3. 生成SSO Deeplink (返回authorization code)
+# 这个接口模拟 IdP 生成授权码
+POST http://localhost:3005/api/app/auth/deeplink
+Content-Type: application/json
+
+{
+  "email": "test@example.com"
+}
+
+### 4. 交换Token (APP B的后端会调用这个接口)
+# 使用上一步返回的 authorizationCode
+POST http://localhost:3005/api/app/auth/exchange-token
+Content-Type: application/json
+
+{
+  "code": "auth_code_xxxxx"
+}
+
+### 5. 健康检查
+GET http://localhost:3005/api/app/health
