@@ -11,17 +11,17 @@
 #    @account_id = uid returned from step 2
 # 5. Execute requests in order
 
-
 # System Variables - Configure these in your environment or VS Code settings
-@api_url = replace_me
-@api_key = replace_me
-@client_id = replace_me
-@client_secret = replace_me
-@group = replace_me
+@api_url = https://openapi.carevoiceos.com
+@api_key = 5b90b45b-69bc-4632-a5c7-bdac6f305ba5
+@client_id = P-USCB
+@client_secret = DSFeiyQeSTbRMYY96IgwQDrAhGxpgrpN
+@group = 2YkXfPkgmlkhQc
 
 # Runtime Variables - These will be updated during API calls
-@server_token = replace_me
-@account_id = replace_me
+@server_token = eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NjYzODE1ODAsImV4cCI6MTc2NjQ2Nzk4MCwiaXNzIjoiVGhlQ2FyZVZvaWNlIiwic3ViIjoiUC1VU0NCIn0.ixBo7FePAhlFVWmh4AEZtK36fywFJqZ8PS3hr2WXUd6PUn-Yjlw7hbcNsbKGikFLpt-hGwnbelj8S-yiWTjbvJPJ6SauXbccKheYjAFt0KS03wjXSLmf8ihwsCqe7UPOTyg8_13riJyTSPfq2q8l5XsE6zcI9PZ27f18DkwNMk0ogbAQoo1U3P2sW4iINmrge-HPtYOwjtUkuUNA1qjomhDpxMWwcA8dp3Ip-ot5WVYZmXMohRxUWh10MKYedTcrA1986mzGJ4H0YslKmk9eXTiCSNnPrSsYejVDUvtCkr_P_wRJ5mCuNshZ_ng8GXWh633eGfQ8qPQOPzL_SudAug
+@account_id = T-20251222053418-2wssdehVydZRJzuLqtJB
+@user_token = eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJULTIwMjUxMjIyMDUzNDE4LTJ3c3NkZWhWeWRaUkp6dUxxdEpCIiwiaXNzIjoiQ1ZPcGVuYXBpIiwiaWF0IjoxNzY2MzgxOTc0LCJleHAiOjE3NjY0NjgzNzQsInRlbmFudCI6IlVTQ0IifQ.e4R-cAoRSDHUXKuHlnOb4HNWBTUxu6n5VU2P0gS8i5c2B3MBWMldKkr5G-uxBeyNfO6lmjMuujtmisfg0Yo-Ud2Bv1FMrEDv1lhlLmuHucaETHLEm2YcikYUpNlsn_4WNKoeDQmdHNfE85R0bJ6bW18vnYoHVSFu3MSY7E6_q5FUzHaptkrLj0dcddq6c5mEaQibR1dMnojGE_--ABDYZ33_LXHKzNCu0NFqMeLD0JuXtQFKn5efd3UPFbRGTmo7zofXYCUPowSyiwQe2bvaTPo8gAgmbWs1c2m-n9F8jGCWtgZ6G8JKtwys4G9v0ZBNDs2I3SZNaG3KuUhNrPMoPA
 
 ### 1. Get Server Token
 POST {{api_url}}/os3/api/open/v1/auth/token
@@ -41,7 +41,7 @@ Content-Type: application/json
 
 {
   "group": "{{group}}",
-  "uniqueId": "abcdefg"
+  "uniqueId": "sso_account_02"
 }
 
 ### 3. Get User Token
@@ -49,3 +49,29 @@ GET {{api_url}}/os3/api/open/v1/account/{{account_id}}/token
 X-Api-Key: {{api_key}}
 Authorization: Bearer {{server_token}}
 
+### 4. Generate SSO Deeplink (PKCE)
+# Purpose: Generate a secure, single-use deep link with authorization code
+# PKCE Flow: code_verifier → code_challenge → auth_code → token exchange
+POST {{api_url}}/os3/api/open/v1/sso/generate-deep-link
+X-Api-Key: {{api_key}}
+Authorization: Bearer {{server_token}}
+Content-Type: application/json
+
+{
+  "codeChallenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+  "codeChallengeMethod": "S256",
+  "cvUserUniqueId": "{{account_id}}",
+  "redirectUri": "carevoiceosdemo://callback",
+  "state": "sso_from_app_a"
+}
+
+### 5. Validate SSO Deeplink (PKCE)
+POST {{api_url}}/os3/api/open/v1/sso/validate-deep-link
+X-Api-Key: {{api_key}}
+Authorization: Bearer {{server_token}}
+Content-Type: application/json
+
+{
+  "authorizationCode": "3xuITJwGG7qCEKaqDf88GAriIDb-0lJ5QW1BZuDvrrs",
+  "codeVerifier": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+}

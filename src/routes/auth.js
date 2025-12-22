@@ -1,5 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { generateToken } = require('../middleware/auth');
 const { validateBody, schemas } = require('../middleware/validation');
 const carevoiceService = require('../services/carevoiceService');
@@ -8,6 +9,29 @@ const router = express.Router();
 
 // In-memory user storage (in production, use a database)
 const users = new Map();
+
+/**
+ * Generate PKCE code_verifier and code_challenge
+ * @returns {Object} { codeVerifier, codeChallenge }
+ */
+function generatePKCE() {
+  // Generate random code_verifier (43-128 characters, URL-safe)
+  const codeVerifier = crypto.randomBytes(32)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+  
+  // Calculate code_challenge = Base64URL(SHA256(code_verifier))
+  const codeChallenge = crypto.createHash('sha256')
+    .update(codeVerifier)
+    .digest('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+  
+  return { codeVerifier, codeChallenge };
+}
 
 /**
  * @route POST /api/auth/register
@@ -212,7 +236,7 @@ router.get('/profile', (req, res) => {
 
 /**
  * @route POST /api/auth/deeplink
- * @desc Generate deeplink for APP B (SSO flow)
+ * @desc Generate deeplink for APP B (SSO flow) - 调用 CareVoiceOS API
  * @access Public
  */
 router.post('/deeplink', async (req, res) => {
@@ -247,48 +271,66 @@ router.post('/deeplink', async (req, res) => {
       });
     }
 
-    // Generate authorization code for SSO (模拟 IdP 生成的 authorization code)
-    // 这个 code 将被 APP B 用来交换真正的 token
-    const authorizationCode = `auth_code_${Date.now()}_${Math.random().toString(36).substr(2, 16)}`;
-    
-    // 存储 code 和用户信息的映射 (有效期5分钟)
-    const codeData = {
-      code: authorizationCode,
-      userId: user.id,
-      email: user.email,
-      udid: user.udid,
-      createdAt: Date.now(),
-      expiresIn: 300000, // 5 minutes
-    };
-    
-    // 临时存储 (生产环境应该用 Redis)
-    if (!global.authorizationCodes) {
-      global.authorizationCodes = new Map();
+    console.log(`[Deeplink] 开始生成 deeplink，用户邮箱: ${user.email}，UDID: ${user.udid}`);
+
+    // Step 1: 获取 CareVoiceOS 账户（如果还没有）
+    const authResult = await carevoiceService.authenticateUser(user.udid);
+    if (!authResult.success) {
+      console.error(`[Deeplink] CareVoiceOS 认证失败:`, authResult.error);
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to authenticate with CareVoiceOS',
+        error: authResult.error,
+      });
     }
-    global.authorizationCodes.set(authorizationCode, codeData);
+
+    const accountId = authResult.data.accountId;
+    const serverToken = authResult.data.serverToken;
+    console.log(`[Deeplink] CareVoiceOS 认证成功，账户ID: ${accountId}`);
+
+    // Step 2: 调用 CareVoiceOS API 生成 deeplink
+    // 动态生成 PKCE 参数
+    const { codeVerifier, codeChallenge } = generatePKCE();
     
-    // 5分钟后自动清理
-    setTimeout(() => {
-      global.authorizationCodes.delete(authorizationCode);
-      console.log(`[Deeplink] Authorization code expired: ${authorizationCode}`);
-    }, 300000);
+    console.log(`[Deeplink] 生成 PKCE 参数`);
+    console.log(`[Deeplink] code_verifier: ${codeVerifier}`);
+    console.log(`[Deeplink] code_challenge: ${codeChallenge}`);
+    
+    const deeplinkResult = await carevoiceService.generateDeepLink(serverToken, {
+      codeChallenge: codeChallenge,
+      codeChallengeMethod: 'S256',
+      cvUserUniqueId: accountId,
+      redirectUri: 'carevoiceosdemo://callback',
+      state: 'sso_from_app_a',
+      codeVerifier: codeVerifier, // 传递 codeVerifier 用于后续验证
+    });
 
-    console.log(`[Deeplink] 生成授权码，用户邮箱: ${user.email}，code: ${authorizationCode}`);
+    if (!deeplinkResult.success) {
+      console.error(`[Deeplink] 生成 deeplink 失败:`, deeplinkResult.error);
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to generate deeplink',
+        error: deeplinkResult.error,
+      });
+    }
 
-    // Generate deeplink with authorization code (按照 OIDC 标准)
-    const deeplink = `carevoiceosdemo://callback?code=${encodeURIComponent(authorizationCode)}&state=sso_from_app_a`;
+    console.log(`[Deeplink] Deeplink 生成成功:`, deeplinkResult.data.deeplink);
 
     res.json({
       success: true,
       message: 'Deeplink generated successfully',
       data: {
-        deeplink,
-        authorizationCode, // 仅用于测试/调试
-        expiresIn: 300, // seconds
+        deeplink: deeplinkResult.data.deeplink,
+        authorizationCode: deeplinkResult.data.authorizationCode,
+        expiresIn: deeplinkResult.data.expiresIn,
+        expiresAt: deeplinkResult.data.expiresAt,
         user: {
           id: user.id,
           email: user.email,
           name: user.name,
+        },
+        carevoice: {
+          accountId: accountId,
         },
       },
     });
@@ -297,6 +339,7 @@ router.post('/deeplink', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Internal server error',
+      error: error.message,
     });
   }
 });
@@ -318,65 +361,55 @@ router.post('/exchange-token', async (req, res) => {
       });
     }
 
-    // 验证 authorization code
-    if (!global.authorizationCodes || !global.authorizationCodes.has(code)) {
+    console.log(`[Exchange Token] 收到授权码: ${code}`);
+
+    // 从存储中获取 code_verifier 和相关信息
+    if (!global.codeVerifiers || !global.codeVerifiers.has(code)) {
+      console.error(`[Exchange Token] 未找到对应的 code_verifier`);
       return res.status(401).json({
         success: false,
         message: 'Invalid or expired authorization code',
       });
     }
 
-    const codeData = global.authorizationCodes.get(code);
+    const storedData = global.codeVerifiers.get(code);
+    const { codeVerifier, accountId, serverToken } = storedData;
     
-    // 检查是否过期
-    if (Date.now() - codeData.createdAt > codeData.expiresIn) {
-      global.authorizationCodes.delete(code);
+    // 使用一次后立即删除 (防止重放攻击)
+    global.codeVerifiers.delete(code);
+
+    console.log(`[Exchange Token] 开始验证授权码，账户ID: ${accountId}`);
+
+    // 调用 CareVoiceOS API 验证 authorization code
+    const validateResult = await carevoiceService.validateDeepLink(
+      serverToken,
+      code,
+      codeVerifier
+    );
+
+    if (!validateResult.success) {
+      console.error(`[Exchange Token] CareVoiceOS 验证失败:`, validateResult.error);
       return res.status(401).json({
         success: false,
-        message: 'Authorization code expired',
+        message: 'Failed to validate authorization code with CareVoiceOS',
+        error: validateResult.error,
       });
     }
 
-    // 找到对应的用户
-    let user = null;
-    for (const [, u] of users) {
-      if (u.id === codeData.userId) {
-        user = u;
-        break;
-      }
-    }
+    console.log(`[Exchange Token] CareVoiceOS 验证成功`);
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
-
-    // 使用一次后立即删除 code (防止重放攻击)
-    global.authorizationCodes.delete(code);
-
-    // 现在调用 CareVoiceOS API 获取真正的 token
-    console.log(`[Exchange Token] 开始调用CareVoiceOS API，用户邮箱: ${user.email}，UDID: ${user.udid}`);
-    const authResult = await carevoiceService.authenticateUser(user.udid);
-
-    if (!authResult.success) {
-      console.error(`[Exchange Token] CareVoiceOS认证失败，用户邮箱: ${user.email}，UDID: ${user.udid}`, authResult.error);
-      return res.status(400).json({
-        success: false,
-        message: 'CareVoiceOS authentication failed',
-        error: authResult.error,
-      });
-    }
-
-    console.log(`[Exchange Token] CareVoiceOS认证成功，用户邮箱: ${user.email}，账户ID: ${authResult.data.accountId}`);
-
+    // 获取用户 token (validate API 返回的数据)
+    const validateData = validateResult.data;
+    
+    console.log(`[Exchange Token] Validate data:`, JSON.stringify(validateData, null, 2));
+    
     // 生成我们自己的 JWT token
     const token = generateToken({
-      userId: user.id,
-      email: user.email,
-      accountId: authResult.data.accountId,
+      accountId: accountId,
+      tenantCode: validateData.tenantCode,
     });
+
+    console.log(`[Exchange Token] Token 交换成功，账户ID: ${accountId}`);
 
     // 返回完整的 token 信息 (按照 OAuth2 标准)
     res.json({
@@ -387,15 +420,16 @@ router.post('/exchange-token', async (req, res) => {
         token_type: 'Bearer',
         expires_in: 86400, // 24 hours
         user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
+          id: accountId,
+          email: '',
+          name: '',
         },
         sdk: {
-          accessToken: authResult.data.userToken,
-          refreshToken: authResult.data.refreshToken,
-          expiresIn: authResult.data.expiresIn,
-          accountId: authResult.data.accountId,
+          accessToken: validateData.access_token,
+          refreshToken: validateData.refresh_token,
+          expiresIn: validateData.expires_in,
+          accountId: accountId,
+          tenantCode: validateData.tenantCode,
         },
       },
     });

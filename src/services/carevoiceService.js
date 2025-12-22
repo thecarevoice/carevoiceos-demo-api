@@ -162,6 +162,125 @@ class CareVoiceService {
   }
 
   /**
+   * Validate SSO Deeplink authorization code
+   * @param {string} serverToken - Server token
+   * @param {string} authorizationCode - Authorization code from deeplink
+   * @param {string} codeVerifier - PKCE code verifier
+   * @returns {Promise<Object>} Validation response with account info
+   */
+  async validateDeepLink(serverToken, authorizationCode, codeVerifier) {
+    console.log(`[CareVoice Service] Starting to validate deeplink code`);
+    const startTime = Date.now();
+    
+    try {
+      const response = await this.httpClient.post('/sso/validate-deep-link', {
+        authorizationCode: authorizationCode,
+        codeVerifier: codeVerifier,
+      }, {
+        headers: {
+          'Authorization': `Bearer ${serverToken}`,
+        },
+      });
+      
+      const duration = Date.now() - startTime;
+      console.log(`[CareVoice Service] Validate deeplink success, duration: ${duration}ms`);
+      
+      return {
+        success: true,
+        data: response.data.data,
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.error(`[CareVoice Service] Validate deeplink failed, duration: ${duration}ms`);
+      console.error('Error validating deeplink:', error.response?.data || error.message);
+      return {
+        success: false,
+        error: error.response?.data || error.message,
+      };
+    }
+  }
+
+  /**
+   * Generate SSO Deeplink
+   * @param {string} serverToken - Server token
+   * @param {Object} params - Deeplink parameters
+   * @param {string} params.codeChallenge - PKCE code challenge
+   * @param {string} params.codeChallengeMethod - Challenge method (S256)
+   * @param {string} params.cvUserUniqueId - CareVoice user unique ID (account_id)
+   * @param {string} params.redirectUri - Redirect URI for the deeplink
+   * @param {string} params.state - State parameter for security
+   * @returns {Promise<Object>} Deeplink response with code_verifier stored
+   */
+  async generateDeepLink(serverToken, params) {
+    console.log(`[CareVoice Service] Starting to generate deeplink, account ID: ${params.cvUserUniqueId}`);
+    const startTime = Date.now();
+    
+    try {
+      const response = await this.httpClient.post('/sso/generate-deep-link', {
+        codeChallenge: params.codeChallenge,
+        codeChallengeMethod: params.codeChallengeMethod,
+        cvUserUniqueId: params.cvUserUniqueId,
+        redirectUri: params.redirectUri,
+        state: params.state,
+      }, {
+        headers: {
+          'Authorization': `Bearer ${serverToken}`,
+        },
+      });
+      
+      const duration = Date.now() - startTime;
+      console.log(`[CareVoice Service] Generate deeplink success, duration: ${duration}ms`);
+      console.log(`[CareVoice Service] Deeplink: ${response.data.data.deepLink}`);
+      
+      // 适配 CareVoiceOS API 返回的数据结构
+      const apiData = response.data.data;
+      
+      // 从 deepLink 中提取 authorization code
+      const code = apiData.deepLink.match(/code=([^&]+)/)?.[1] || '';
+      
+      console.log(`[CareVoice Service] Authorization code: ${code}`);
+      
+      // 存储 code_verifier 供后续 exchange-token 使用
+      if (!global.codeVerifiers) {
+        global.codeVerifiers = new Map();
+      }
+      
+      global.codeVerifiers.set(code, {
+        codeVerifier: params.codeVerifier, // 使用传入的动态生成的 codeVerifier
+        accountId: params.cvUserUniqueId,
+        serverToken: serverToken,
+        createdAt: Date.now(),
+      });
+      
+      console.log(`[CareVoice Service] Code verifier stored for code: ${code}`);
+      
+      // 10分钟后清理
+      setTimeout(() => {
+        global.codeVerifiers?.delete(code);
+        console.log(`[CareVoice Service] Code verifier expired for code: ${code}`);
+      }, 600000);
+      
+      return {
+        success: true,
+        data: {
+          deeplink: apiData.deepLink,
+          authorizationCode: code,
+          expiresIn: apiData.expiresInSeconds,
+          expiresAt: new Date(apiData.expiresAtEpochMilli).toISOString(),
+        },
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.error(`[CareVoice Service] Generate deeplink failed, duration: ${duration}ms`);
+      console.error('Error generating deeplink:', error.response?.data || error.message);
+      return {
+        success: false,
+        error: error.response?.data || error.message,
+      };
+    }
+  }
+
+  /**
    * Complete authentication flow
    * @param {string} uniqueId - Unique identifier for the user
    * @returns {Promise<Object>} Complete auth response
